@@ -4,13 +4,14 @@
 #include <unistd.h>
 #include<ctype.h>
 #include<stdio.h>
-
+#include<sys/ioctl.h>
 #define CTRL_KEY(k) ((k)&0x1f)
 
 struct editorConfig{
+	int screenrows;
+	int screencols;
 	struct termios orig_termios;
-}
-
+};
 
 struct editorConfig E;
 
@@ -40,9 +41,15 @@ void enable_raw_mode() {
 
 void editorDrawRows(){
 	int i;
-	for(i=0;i<24;i++){
+	for(i=0;i<E.screenrows;i++){
 		write(STDOUT_FILENO,"~\r\n",3);
 	}
+}
+
+
+
+void initEditor(){
+	if(getScreenSize(&E.screenrows,&E.screencols)==-1) die("getScreenSize");
 }
 
 void editorScreenRefresh(){
@@ -79,9 +86,40 @@ void editorKeyPressProcessor(){
 }
 
 
+int getCursorPosition(int *rows, int *cols) {
+  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
+  printf("\r\n");
+  char c;
+  while (read(STDIN_FILENO, &c, 1) == 1) {
+    if (iscntrl(c)) {
+      printf("%d\r\n", c);
+    } else {
+      printf("%d ('%c')\r\n", c, c);
+    }
+  }
+  editorKeyRead();
+  return -1;
+}
+
+
+int getScreenSize(int *rows, int *cols){
+        struct winsize ws;
+
+        if(1||ioctl(STDOUT_FILENO,TIOCGWINSZ,&ws)==-1 ||ws.ws_col==0){
+                if(write(STDOUT_FILENO,"\x1b[999C\x1b[999B",12)!=12) return -1;
+                return getCursorPosition(rows,cols);
+        }else{
+                *rows= ws.ws_row;
+                *cols = ws.ws_col;
+                return 0;
+        }
+}
+
+
+
 int main(){
 	enable_raw_mode();
-
+	initEditor();
 	while(1){
 		editorScreenRefresh();
 		editorKeyPressProcessor();
